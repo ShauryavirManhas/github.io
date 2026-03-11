@@ -196,6 +196,17 @@ footer{position:relative;z-index:1;padding:32px 48px;border-top:1px solid var(--
       This page fetches <strong>live Premier League data</strong> every time it loads.
       You need a free API key from <a href="https://www.football-data.org/client/register" target="_blank">football-data.org</a> — no credit card required.
     </p>
+    <div class="gate-steps">
+      <p><span>1.</span> Go to football-data.org/client/register</p>
+      <p><span>2.</span> Sign up for the free tier</p>
+      <p><span>3.</span> Check your email for your API key</p>
+      <p><span>4.</span> Paste it below and click Load</p>
+    </div>
+    <div class="gate-input-wrap">
+      <input id="api-key-input" type="text" placeholder="Paste your API key here…" autocomplete="off"/>
+      <button id="load-btn" onclick="startLoad()">Load ↗</button>
+    </div>
+    <p class="gate-error" id="gate-error">Invalid key or API error. Please check and try again.</p>
   </div>
 </div>
 
@@ -329,13 +340,12 @@ footer{position:relative;z-index:1;padding:32px 48px;border-top:1px solid var(--
 </div><!-- end main-content -->
 
 <script>
-const MUN_ID = 66;
-const PL_ID  = 'PL';
+// ESPN API: no IDs needed
 
 let allData  = {};
 
 // ── ENTRY ──────────────────────────────────────────────────────────────────
-const API_KEY = '9e6ac22941b04001a3fbe82e9d49fcbf';
+// Using ESPN public API — no auth needed, full CORS support
 
 async function startLoad() {
   document.getElementById('loading').style.display = 'flex';
@@ -359,27 +369,81 @@ async function refreshData() {
 
 window.addEventListener('load', startLoad);
 
-// ── FETCH ──────────────────────────────────────────────────────────────────
-function apiFetch(path) {
-  const url = `https://api.football-data.org/v4/${path}`;
-  const proxy = `https://corsproxy.io/?url=${encodeURIComponent(url)}`;
-  return fetch(proxy, {
-    headers: { 'X-Auth-Token': API_KEY }
-  }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+// ── FETCH via ESPN public API (no key needed, full CORS support) ────────────
+function espnFetch(url) {
+  return fetch(url).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
 }
 
 async function fetchAllData() {
+  const PL = 'eng.1';
+
   setStatus('Fetching standings…');
-  const standings = await apiFetch(`competitions/${PL_ID}/standings`);
+  const standingsRaw = await espnFetch(`https://site.api.espn.com/apis/v2/sports/soccer/${PL}/standings`);
 
-  setStatus('Fetching recent results…');
-  const results = await apiFetch(`teams/${MUN_ID}/matches?status=FINISHED&limit=10`);
+  setStatus('Fetching Man Utd matches…');
+  const scheduleRaw = await espnFetch(`https://site.api.espn.com/apis/v2/sports/soccer/${PL}/teams/360/schedule?season=2026`);
 
-  setStatus('Fetching upcoming fixtures…');
-  const upcoming = await apiFetch(`teams/${MUN_ID}/matches?status=SCHEDULED&limit=8`);
+  setStatus('Fetching top scorers…');
+  const scorersRaw = await espnFetch(`https://site.api.espn.com/apis/v2/sports/soccer/${PL}/leaders`);
 
-  allData = { standings, results, upcoming };
-  allData.lastUpdated = new Date();
+  // Parse standings
+  const standingsTable = [];
+  const entries = standingsRaw.standings?.entries
+    || standingsRaw.children?.[0]?.standings?.entries
+    || [];
+  entries.forEach((entry, i) => {
+    const stats = {};
+    (entry.stats || []).forEach(s => { stats[s.name] = s.value; });
+    standingsTable.push({
+      position: i + 1,
+      team: { id: entry.team?.id, name: entry.team?.displayName, shortName: entry.team?.shortDisplayName },
+      won: stats.wins || 0,
+      draw: stats.ties || 0,
+      lost: stats.losses || 0,
+      goalsFor: stats.pointsFor || 0,
+      goalsAgainst: stats.pointsAgainst || 0,
+      goalDifference: (stats.pointsFor || 0) - (stats.pointsAgainst || 0),
+      points: stats.points || 0,
+      playedGames: (stats.wins || 0) + (stats.ties || 0) + (stats.losses || 0),
+    });
+  });
+
+  // Parse matches
+  const finished = [], scheduled = [];
+  (scheduleRaw.events || []).forEach(ev => {
+    const comp = ev.competitions?.[0];
+    if (!comp) return;
+    const home = comp.competitors?.find(c => c.homeAway === 'home');
+    const away = comp.competitors?.find(c => c.homeAway === 'away');
+    if (!home || !away) return;
+    const munIsHome = home.team?.displayName?.includes('Manchester United');
+    const munTeam = munIsHome ? home : away;
+    const oppTeam = munIsHome ? away : home;
+    const munScore = parseInt(munTeam.score) || 0;
+    const oppScore = parseInt(oppTeam.score) || 0;
+    const state = ev.status?.type?.state;
+    const match = {
+      date: ev.date?.substring(0, 10),
+      utcDate: ev.date,
+      homeTeam: { name: home.team?.displayName },
+      awayTeam: { name: away.team?.displayName },
+      munIsHome, munScore, oppScore,
+      opponent: oppTeam.team?.displayName,
+      result: munScore > oppScore ? 'W' : munScore < oppScore ? 'L' : 'D',
+    };
+    if (state === 'post') finished.push(match);
+    else if (state === 'pre') scheduled.push(match);
+  });
+
+  const munStanding = standingsTable.find(t => t.team.name?.includes('Manchester United')) || standingsTable[2];
+
+  allData = {
+    standings: { standings: [{ table: standingsTable }] },
+    results:   { matches: finished.slice(-10) },
+    upcoming:  { matches: scheduled.slice(0, 8) },
+    munStanding,
+    lastUpdated: new Date(),
+  };
 }
 
 function setStatus(msg) { document.getElementById('load-status').textContent = msg; }
@@ -398,8 +462,9 @@ function renderAll() {
 }
 
 function getMUNStanding() {
+  if (allData.munStanding) return allData.munStanding;
   const rows = allData.standings.standings[0].table;
-  return rows.find(r => r.team.id === MUN_ID);
+  return rows.find(r => r.team.name?.includes('Manchester United')) || rows[2];
 }
 
 function renderHero() {
@@ -417,19 +482,16 @@ function renderHero() {
 }
 
 function renderForm() {
-  const matches = [...allData.results.matches].reverse().slice(0, 10);
+  const matches = [...allData.results.matches].slice(-10);
   const grid = document.getElementById('form-grid');
   grid.innerHTML = '';
+  if (!matches.length) { grid.innerHTML = '<div style="padding:24px;font-family:DM Mono,monospace;font-size:12px;color:#666">No recent matches found.</div>'; return; }
   matches.forEach(m => {
-    const isHome = m.homeTeam.id === MUN_ID;
-    const munScore = isHome ? m.score.fullTime.home : m.score.fullTime.away;
-    const oppScore = isHome ? m.score.fullTime.away : m.score.fullTime.home;
-    const oppName  = isHome ? m.awayTeam.shortName || m.awayTeam.name : m.homeTeam.shortName || m.homeTeam.name;
-    let res = 'D';
-    if (munScore > oppScore) res = 'W';
-    else if (munScore < oppScore) res = 'L';
-    const date = new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'});
-    const scoreStr = isHome ? `${munScore} – ${oppScore}` : `${oppScore} – ${munScore}`;
+    const isHome = m.munIsHome;
+    const res = m.result || 'D';
+    const date = new Date(m.utcDate || m.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'});
+    const scoreStr = `${m.munScore} – ${m.oppScore}`;
+    const oppName = (m.opponent || '').replace('Manchester','Man').substring(0,12);
     grid.innerHTML += `
       <div class="form-match">
         <div class="form-venue">${isHome ? 'H' : 'A'}</div>
@@ -461,7 +523,7 @@ function renderStandings() {
   const tbody = document.getElementById('standings-tbody');
   tbody.innerHTML = '';
   rows.forEach(r => {
-    const isMUN = r.team.id === MUN_ID;
+    const isMUN = r.team.name?.includes('Manchester United') || r.team.shortName === 'MUN';
     const gd = r.goalDifference >= 0 ? `+${r.goalDifference}` : r.goalDifference;
     let rankClass = '';
     if (r.position <= 4) rankClass = 'zone-cl';
@@ -488,21 +550,19 @@ function renderFixtures() {
   list.innerHTML = '';
   if (!matches.length) { list.innerHTML = '<div style="padding:24px 28px;font-family:DM Mono,monospace;font-size:12px;color:var(--muted)">No upcoming fixtures found.</div>'; return; }
   matches.forEach(m => {
-    const isHome = m.homeTeam.id === MUN_ID;
-    const homeName = m.homeTeam.name;
-    const awayName = m.awayTeam.name;
-    const homeIsUTD = isHome;
-    const awayIsUTD = !isHome;
-    const date = new Date(m.utcDate);
+    const homeName = m.homeTeam?.name || '';
+    const awayName = m.awayTeam?.name || '';
+    const homeIsUTD = homeName.includes('Manchester United') || m.munIsHome;
+    const awayIsUTD = awayName.includes('Manchester United') || (!m.munIsHome);
+    const date = new Date(m.utcDate || m.date);
     const dateStr = date.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) + ' · ' + date.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-    const comp = m.competition?.name || 'Premier League';
     list.innerHTML += `
       <div class="fixture">
         <div class="fixture-date">${dateStr}</div>
         <div class="fixture-team home ${homeIsUTD ? 'utd' : ''}">${homeName}</div>
         <div class="fixture-vs">vs</div>
         <div class="fixture-team ${awayIsUTD ? 'utd' : ''}">${awayName}</div>
-        <div class="fixture-status">${comp === 'Premier League' ? 'PL' : comp.substring(0,8)}</div>
+        <div class="fixture-status">PL</div>
       </div>`;
   });
 }
@@ -513,7 +573,7 @@ function renderAnalysis() {
   const matches = allData.results.matches;
   const last5 = [...matches].reverse().slice(0, 5);
   const last5W = last5.filter(m => {
-    const isHome = m.homeTeam.id === MUN_ID;
+    const isHome = m.munIsHome || m.homeTeam?.name?.includes('Manchester United');
     const ms = isHome ? m.score.fullTime.home : m.score.fullTime.away;
     const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
     return ms > os;
