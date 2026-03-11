@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Manchester United — Live Season Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#da291c;--gold:#ffd700;--black:#0d0d0d;--dark:#111;
+  --card:#191919;--border:#2a2a2a;--text:#f0f0f0;--muted:#777;
+  --win:#4ade80;--draw:#fbbf24;--loss:#f87171;
+}
+html{scroll-behavior:smooth}
+body{background:var(--black);color:var(--text);font-family:'DM Sans',sans-serif;overflow-x:hidden}
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:radial-gradient(circle at 20% 50%,rgba(218,41,28,.06) 0%,transparent 60%),
+    radial-gradient(circle at 80% 20%,rgba(218,41,28,.04) 0%,transparent 50%);
+  pointer-events:none;z-index:0;
+}
+
+
+
+/* ── NAV ── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 48px;
+  background:rgba(13,13,13,0.92);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
+}
+.nav-left{display:flex;align-items:center;gap:14px}
+.nav-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.06em;color:var(--red)}
+.nav-right{display:flex;align-items:center;gap:16px}
+.live-badge{
+  display:flex;align-items:center;gap:6px;
+  font-family:'DM Mono',monospace;font-size:10px;
+  color:var(--win);letter-spacing:0.1em;text-transform:uppercase;
+}
+.live-dot{width:7px;height:7px;background:var(--win);border-radius:50%;animation:pulse 1.5s infinite}
+.nav-updated{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)}
+#refresh-btn{
+  background:transparent;border:1px solid var(--border);
+  color:var(--muted);font-family:'DM Mono',monospace;
+  font-size:10px;padding:6px 12px;cursor:pointer;
+  letter-spacing:0.08em;transition:all 0.2s;
+}
+#refresh-btn:hover{border-color:var(--red);color:var(--red)}
+
+/* ── LOADING ── */
+#loading{
+  position:fixed;inset:0;z-index:200;
+  background:var(--black);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+}
+.loader-text{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:0.15em}
+.loader-bar{width:200px;height:2px;background:var(--border)}
+.loader-fill{height:100%;background:var(--red);animation:load 1.8s ease-in-out infinite}
+@keyframes load{0%{width:0}70%{width:100%}100%{width:100%}}
+
+/* ── MAIN CONTENT ── */
+#main-content{display:none}
+
+/* ── HERO ── */
+#hero{
+  position:relative;z-index:1;
+  min-height:100vh;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  padding:0 48px 72px;overflow:hidden;
+}
+.hero-bg-text{
+  position:absolute;right:-30px;top:50%;transform:translateY(-50%);
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(160px,22vw,320px);
+  color:transparent;-webkit-text-stroke:1px rgba(218,41,28,0.07);
+  line-height:1;pointer-events:none;user-select:none;
+}
+.hero-eyebrow{
+  font-family:'DM Mono',monospace;font-size:11px;color:var(--red);
+  letter-spacing:0.2em;text-transform:uppercase;margin-bottom:20px;
+}
+.position-badge{
+  display:inline-flex;align-items:center;gap:10px;
+  background:var(--red);color:white;padding:6px 16px;
+  font-family:'DM Mono',monospace;font-size:12px;
+  letter-spacing:0.12em;text-transform:uppercase;
+  margin-bottom:24px;width:fit-content;
+}
+.hero-heading{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(60px,10vw,140px);
+  line-height:0.9;letter-spacing:0.01em;margin-bottom:28px;
+}
+.hero-heading span{color:var(--red)}
+.hero-stats-row{display:flex;gap:48px;flex-wrap:wrap}
+.hero-stat{display:flex;flex-direction:column;gap:4px}
+.hero-stat-val{font-family:'Bebas Neue',sans-serif;font-size:52px;line-height:1}
+.hero-stat-val em{color:var(--red);font-style:normal;font-size:32px}
+.hero-stat-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:0.15em;text-transform:uppercase}
+
+/* ── SECTIONS ── */
+section{position:relative;z-index:1;padding:80px 48px}
+.section-eyebrow{font-family:'DM Mono',monospace;font-size:11px;color:var(--red);letter-spacing:0.2em;text-transform:uppercase;margin-bottom:12px}
+.section-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,60px);letter-spacing:0.02em;margin-bottom:40px}
+
+/* ── FORM STRIP ── */
+#form-section{background:var(--dark);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+#form-grid{display:flex;gap:1px;background:var(--border);overflow-x:auto}
+.form-match{
+  min-width:140px;flex:1;background:var(--dark);padding:24px 20px;
+  transition:background 0.2s;position:relative;
+}
+.form-match:hover{background:var(--card)}
+.form-result{font-family:'Bebas Neue',sans-serif;font-size:42px;line-height:1;margin-bottom:8px}
+.form-result.W{color:var(--win)}.form-result.D{color:var(--draw)}.form-result.L{color:var(--loss)}
+.form-score{font-family:'DM Mono',monospace;font-size:15px;font-weight:500;margin-bottom:6px}
+.form-opponent{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:0.05em}
+.form-date{font-family:'DM Mono',monospace;font-size:9px;color:#555;margin-top:4px}
+.form-venue{position:absolute;top:14px;right:14px;font-family:'DM Mono',monospace;font-size:9px;color:#444;text-transform:uppercase}
+
+/* ── STATS ── */
+#stats-section{background:var(--black)}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border)}
+.stat-box{background:var(--black);padding:36px 28px;transition:background 0.2s}
+.stat-box:hover{background:var(--card)}
+.stat-box-val{font-family:'Bebas Neue',sans-serif;font-size:54px;line-height:1;color:var(--red);margin-bottom:6px}
+.stat-box-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:0.15em;text-transform:uppercase}
+.stat-box-sub{font-family:'DM Mono',monospace;font-size:11px;color:#555;margin-top:8px}
+
+/* ── STANDINGS ── */
+#standings-section{background:var(--dark)}
+.table{width:100%;border-collapse:collapse}
+.table th{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;padding:12px 16px;border-bottom:1px solid var(--border);text-align:left}
+.table th:not(:first-child):not(:nth-child(2)){text-align:center}
+.table td{padding:14px 16px;border-bottom:1px solid rgba(42,42,42,0.5);font-size:14px}
+.table td:not(:first-child):not(:nth-child(2)){text-align:center;font-family:'DM Mono',monospace;font-size:13px}
+.table tr:hover td{background:rgba(255,255,255,0.02)}
+.table tr.highlight td{background:rgba(218,41,28,0.08);border-left:3px solid var(--red)}
+.rank-num{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)}
+.pts-cell{font-weight:600}
+.zone-cl{color:#60a5fa!important}
+.zone-rel{color:var(--loss)!important}
+
+/* ── FIXTURES ── */
+#fixtures-section{background:var(--black)}
+.fixture-list{display:flex;flex-direction:column;gap:1px;background:var(--border);border:1px solid var(--border)}
+.fixture{
+  background:var(--black);padding:20px 28px;
+  display:grid;grid-template-columns:140px 1fr 60px 1fr 60px;
+  align-items:center;gap:16px;transition:background 0.2s;
+}
+.fixture:hover{background:var(--card)}
+.fixture-date{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)}
+.fixture-team{font-size:14px;font-weight:500}
+.fixture-team.home{text-align:right}
+.fixture-team.utd{color:var(--red)}
+.fixture-vs{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-align:center}
+.fixture-status{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);text-align:right}
+
+/* ── ANALYSIS ── */
+#analysis-section{background:var(--dark)}
+.analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border)}
+.analysis-card{background:var(--dark);padding:40px 36px;position:relative;overflow:hidden}
+.analysis-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:0;background:var(--red);transition:height 0.4s}
+.analysis-card:hover::before{height:100%}
+.analysis-card-title{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:0.04em;margin-bottom:14px}
+.analysis-text{font-size:14px;color:#aaa;line-height:1.75}
+.analysis-text strong{color:var(--text)}
+
+footer{position:relative;z-index:1;padding:32px 48px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.footer-note{font-family:'DM Mono',monospace;font-size:10px;color:#444;letter-spacing:0.08em}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.reveal{opacity:0;transform:translateY(20px);transition:opacity 0.7s ease,transform 0.7s ease}
+.reveal.visible{opacity:1;transform:none}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  nav{padding:16px 20px}
+  #hero,section{padding:60px 20px}
+  #hero{padding-bottom:48px}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .analysis-grid{grid-template-columns:1fr}
+  footer{flex-direction:column;gap:12px}
+  .fixture{grid-template-columns:80px 1fr 40px 1fr 50px}
+}
+</style>
+</head>
+<body>
+
+    <div class="gate-title">Live Data Setup</div>
+    <p class="gate-desc">
+      This page fetches <strong>live Premier League data</strong> every time it loads.
+      You need a free API key from <a href="https://www.football-data.org/client/register" target="_blank">football-data.org</a> — no credit card required.
+    </p>
+    <div class="gate-steps">
+      <p><span>1.</span> Go to football-data.org/client/register</p>
+      <p><span>2.</span> Sign up for the free tier</p>
+      <p><span>3.</span> Check your email for your API key</p>
+      <p><span>4.</span> Paste it below and click Load</p>
+    </div>
+    <div class="gate-input-wrap">
+      <input id="api-key-input" type="text" placeholder="Paste your API key here…" autocomplete="off"/>
+      <button id="load-btn" onclick="startLoad()">Load ↗</button>
+    </div>
+    <p class="gate-error" id="gate-error">Invalid key or API error. Please check and try again.</p>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading" style="display:none">
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--red)">Loading Live Data</div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+  <div class="loader-text" id="load-status">Fetching standings…</div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div id="main-content">
+
+<nav>
+  <div class="nav-left">
+    <svg width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="4" fill="#da291c"/><text x="16" y="21" text-anchor="middle" font-family="serif" font-weight="bold" font-size="10" fill="white">MU</text></svg>
+    <span class="nav-title">Man United</span>
+  </div>
+  <div class="nav-right">
+    <div class="live-badge"><div class="live-dot"></div>Live</div>
+    <span class="nav-updated" id="nav-updated"></span>
+    <button id="refresh-btn" onclick="refreshData()">↻ Refresh</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-bg-text">UTD</div>
+  <p class="hero-eyebrow">// Premier League · Live Season Data</p>
+  <div class="position-badge" id="hero-position">Loading…</div>
+  <h1 class="hero-heading">Manchester<br/><span>United</span></h1>
+  <div class="hero-stats-row">
+    <div class="hero-stat">
+      <div class="hero-stat-val" id="h-wins">–<em>W</em></div>
+      <div class="hero-stat-label">Wins</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val" id="h-draws">–<em>D</em></div>
+      <div class="hero-stat-label">Draws</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val" id="h-losses">–<em>L</em></div>
+      <div class="hero-stat-label">Losses</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val" id="h-pts">–<em>pts</em></div>
+      <div class="hero-stat-label">Points</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val" id="h-played">–<em>GP</em></div>
+      <div class="hero-stat-label">Played</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val" id="h-gd">–<em>GD</em></div>
+      <div class="hero-stat-label">Goal Diff</div>
+    </div>
+  </div>
+</section>
+
+<!-- RECENT FORM -->
+<section id="form-section">
+  <div class="section-eyebrow">01 — Recent Form</div>
+  <div class="section-title reveal">Last 10 Results</div>
+  <div id="form-grid" class="reveal"></div>
+</section>
+
+<!-- STATS -->
+<section id="stats-section">
+  <div class="section-eyebrow">02 — Season Stats</div>
+  <div class="section-title reveal">By The Numbers</div>
+  <div class="stats-grid reveal">
+    <div class="stat-box">
+      <div class="stat-box-val" id="s-pts">–</div>
+      <div class="stat-box-label">Points</div>
+      <div class="stat-box-sub" id="s-pos">– in Premier League</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-box-val" id="s-winrate">–</div>
+      <div class="stat-box-label">Win Rate</div>
+      <div class="stat-box-sub" id="s-winrate-sub">– from – games</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-box-val" id="s-gf">–</div>
+      <div class="stat-box-label">Goals For</div>
+      <div class="stat-box-sub" id="s-ga">– goals against</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-box-val" id="s-gap">–</div>
+      <div class="stat-box-label">Pts Behind Leader</div>
+      <div class="stat-box-sub" id="s-leader">Leader: –</div>
+    </div>
+  </div>
+</section>
+
+<!-- STANDINGS -->
+<section id="standings-section">
+  <div class="section-eyebrow">03 — League Table</div>
+  <div class="section-title reveal">Premier League Standings</div>
+  <div class="reveal" style="overflow-x:auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>#</th><th>Club</th><th>P</th><th>W</th><th>D</th><th>L</th>
+          <th>GF</th><th>GA</th><th>GD</th><th>Pts</th>
+        </tr>
+      </thead>
+      <tbody id="standings-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- UPCOMING FIXTURES -->
+<section id="fixtures-section">
+  <div class="section-eyebrow">04 — Fixtures</div>
+  <div class="section-title reveal">Upcoming Matches</div>
+  <div class="fixture-list reveal" id="fixtures-list"></div>
+</section>
+
+<!-- ANALYSIS -->
+<section id="analysis-section">
+  <div class="section-eyebrow">05 — Analysis</div>
+  <div class="section-title reveal">Season Breakdown</div>
+  <div class="analysis-grid reveal" id="analysis-grid"></div>
+</section>
+
+<footer>
+  <div class="footer-note">Data: football-data.org · Auto-updates on page load</div>
+  <div class="footer-note" id="footer-updated"></div>
+</footer>
+
+</div><!-- end main-content -->
+
+<script>
+const MUN_ID = 66;
+const PL_ID  = 'PL';
+
+let allData  = {};
+
+// ── ENTRY ──────────────────────────────────────────────────────────────────
+const API_KEY = '9e6ac22941b04001a3fbe82e9d49fcbf';
+
+async function startLoad() {
+  document.getElementById('loading').style.display = 'flex';
+  try {
+    await fetchAllData();
+    renderAll();
+    document.getElementById('loading').style.display      = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    initReveal();
+  } catch(e) {
+    document.getElementById('loading').innerHTML = '<div style="font-family:DM Mono,monospace;color:var(--loss);font-size:13px;padding:20px">Failed to load data. Check console.</div>';
+    console.error(e);
+  }
+}
+
+async function refreshData() {
+  document.getElementById('refresh-btn').textContent = '↻ …';
+  try { await fetchAllData(); renderAll(); } catch(e) { console.error(e); }
+  document.getElementById('refresh-btn').textContent = '↻ Refresh';
+}
+
+window.addEventListener('load', startLoad);
+
+// ── FETCH ──────────────────────────────────────────────────────────────────
+function apiFetch(path) {
+  return fetch(`https://api.football-data.org/v4/${path}`, {
+    headers: { 'X-Auth-Token': API_KEY }
+  }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+}
+
+async function fetchAllData() {
+  setStatus('Fetching standings…');
+  const standings = await apiFetch(`competitions/${PL_ID}/standings`);
+
+  setStatus('Fetching recent results…');
+  const results = await apiFetch(`teams/${MUN_ID}/matches?status=FINISHED&limit=10`);
+
+  setStatus('Fetching upcoming fixtures…');
+  const upcoming = await apiFetch(`teams/${MUN_ID}/matches?status=SCHEDULED&limit=8`);
+
+  allData = { standings, results, upcoming };
+  allData.lastUpdated = new Date();
+}
+
+function setStatus(msg) { document.getElementById('load-status').textContent = msg; }
+
+// ── RENDER ─────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderHero();
+  renderForm();
+  renderStats();
+  renderStandings();
+  renderFixtures();
+  renderAnalysis();
+  const t = allData.lastUpdated.toLocaleTimeString();
+  document.getElementById('nav-updated').textContent = `Updated ${t}`;
+  document.getElementById('footer-updated').textContent = `Last updated: ${allData.lastUpdated.toLocaleString()}`;
+}
+
+function getMUNStanding() {
+  const rows = allData.standings.standings[0].table;
+  return rows.find(r => r.team.id === MUN_ID);
+}
+
+function renderHero() {
+  const s = getMUNStanding();
+  const pos = s.position;
+  const suffix = pos === 1 ? 'st' : pos === 2 ? 'nd' : pos === 3 ? 'rd' : 'th';
+  document.getElementById('hero-position').textContent = `${pos}${suffix} Place · ${s.points} Points`;
+  document.getElementById('h-wins').innerHTML    = `${s.won}<em>W</em>`;
+  document.getElementById('h-draws').innerHTML   = `${s.draw}<em>D</em>`;
+  document.getElementById('h-losses').innerHTML  = `${s.lost}<em>L</em>`;
+  document.getElementById('h-pts').innerHTML     = `${s.points}<em>pts</em>`;
+  document.getElementById('h-played').innerHTML  = `${s.playedGames}<em>GP</em>`;
+  const gd = s.goalDifference >= 0 ? `+${s.goalDifference}` : `${s.goalDifference}`;
+  document.getElementById('h-gd').innerHTML = `${gd}<em>GD</em>`;
+}
+
+function renderForm() {
+  const matches = [...allData.results.matches].reverse().slice(0, 10);
+  const grid = document.getElementById('form-grid');
+  grid.innerHTML = '';
+  matches.forEach(m => {
+    const isHome = m.homeTeam.id === MUN_ID;
+    const munScore = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+    const oppScore = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+    const oppName  = isHome ? m.awayTeam.shortName || m.awayTeam.name : m.homeTeam.shortName || m.homeTeam.name;
+    let res = 'D';
+    if (munScore > oppScore) res = 'W';
+    else if (munScore < oppScore) res = 'L';
+    const date = new Date(m.utcDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'});
+    const scoreStr = isHome ? `${munScore} – ${oppScore}` : `${oppScore} – ${munScore}`;
+    grid.innerHTML += `
+      <div class="form-match">
+        <div class="form-venue">${isHome ? 'H' : 'A'}</div>
+        <div class="form-result ${res}">${res}</div>
+        <div class="form-score">${scoreStr}</div>
+        <div class="form-opponent">vs ${oppName}</div>
+        <div class="form-date">${date}</div>
+      </div>`;
+  });
+}
+
+function renderStats() {
+  const s = getMUNStanding();
+  const leader = allData.standings.standings[0].table[0];
+  const winRate = Math.round((s.won / s.playedGames) * 100);
+  document.getElementById('s-pts').textContent = s.points;
+  document.getElementById('s-pos').textContent = `${ordinal(s.position)} in Premier League`;
+  document.getElementById('s-winrate').textContent = winRate + '%';
+  document.getElementById('s-winrate-sub').textContent = `${s.won}W from ${s.playedGames} games`;
+  document.getElementById('s-gf').textContent = s.goalsFor;
+  document.getElementById('s-ga').textContent = `${s.goalsAgainst} goals against`;
+  const gap = leader.points - s.points;
+  document.getElementById('s-gap').textContent = gap === 0 ? 'Top' : gap + ' pts';
+  document.getElementById('s-leader').textContent = `Leader: ${leader.team.shortName || leader.team.name} (${leader.points}pts)`;
+}
+
+function renderStandings() {
+  const rows = allData.standings.standings[0].table;
+  const tbody = document.getElementById('standings-tbody');
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const isMUN = r.team.id === MUN_ID;
+    const gd = r.goalDifference >= 0 ? `+${r.goalDifference}` : r.goalDifference;
+    let rankClass = '';
+    if (r.position <= 4) rankClass = 'zone-cl';
+    if (r.position >= 18) rankClass = 'zone-rel';
+    tbody.innerHTML += `
+      <tr class="${isMUN ? 'highlight' : ''}">
+        <td><span class="rank-num ${rankClass}">${r.position}</span></td>
+        <td><strong>${r.team.name}</strong></td>
+        <td>${r.playedGames}</td>
+        <td style="color:var(--win)">${r.won}</td>
+        <td style="color:var(--draw)">${r.draw}</td>
+        <td style="color:var(--loss)">${r.lost}</td>
+        <td>${r.goalsFor}</td>
+        <td>${r.goalsAgainst}</td>
+        <td>${gd}</td>
+        <td class="pts-cell">${r.points}</td>
+      </tr>`;
+  });
+}
+
+function renderFixtures() {
+  const matches = allData.upcoming.matches.slice(0, 6);
+  const list = document.getElementById('fixtures-list');
+  list.innerHTML = '';
+  if (!matches.length) { list.innerHTML = '<div style="padding:24px 28px;font-family:DM Mono,monospace;font-size:12px;color:var(--muted)">No upcoming fixtures found.</div>'; return; }
+  matches.forEach(m => {
+    const isHome = m.homeTeam.id === MUN_ID;
+    const homeName = m.homeTeam.name;
+    const awayName = m.awayTeam.name;
+    const homeIsUTD = isHome;
+    const awayIsUTD = !isHome;
+    const date = new Date(m.utcDate);
+    const dateStr = date.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) + ' · ' + date.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    const comp = m.competition?.name || 'Premier League';
+    list.innerHTML += `
+      <div class="fixture">
+        <div class="fixture-date">${dateStr}</div>
+        <div class="fixture-team home ${homeIsUTD ? 'utd' : ''}">${homeName}</div>
+        <div class="fixture-vs">vs</div>
+        <div class="fixture-team ${awayIsUTD ? 'utd' : ''}">${awayName}</div>
+        <div class="fixture-status">${comp === 'Premier League' ? 'PL' : comp.substring(0,8)}</div>
+      </div>`;
+  });
+}
+
+function renderAnalysis() {
+  const s   = getMUNStanding();
+  const leader = allData.standings.standings[0].table[0];
+  const matches = allData.results.matches;
+  const last5 = [...matches].reverse().slice(0, 5);
+  const last5W = last5.filter(m => {
+    const isHome = m.homeTeam.id === MUN_ID;
+    const ms = isHome ? m.score.fullTime.home : m.score.fullTime.away;
+    const os = isHome ? m.score.fullTime.away : m.score.fullTime.home;
+    return ms > os;
+  }).length;
+  const winRate = Math.round((s.won / s.playedGames) * 100);
+  const gap = leader.points - s.points;
+  const gamesLeft = 38 - s.playedGames;
+  const pos = ordinal(s.position);
+
+  const grid = document.getElementById('analysis-grid');
+  grid.innerHTML = `
+    <div class="analysis-card">
+      <div class="analysis-card-title">📊 Current Standing</div>
+      <p class="analysis-text">
+        Manchester United sit <strong>${pos}</strong> in the Premier League with <strong>${s.points} points</strong> from ${s.playedGames} games.
+        Their win rate of <strong>${winRate}%</strong> and a goal difference of <strong>${s.goalDifference >= 0 ? '+' : ''}${s.goalDifference}</strong> reflects a ${winRate >= 50 ? 'solid' : 'mixed'} campaign so far.
+      </p>
+    </div>
+    <div class="analysis-card">
+      <div class="analysis-card-title">🔥 Recent Form</div>
+      <p class="analysis-text">
+        In the last 5 games, United have won <strong>${last5W} out of 5</strong>.
+        ${last5W >= 4 ? 'Excellent momentum heading into the next fixtures.' : last5W >= 3 ? 'Decent form but room to improve consistency.' : 'A dip in form that needs addressing soon.'}
+        ${s.draw} draws across the season suggests points being left on the table.
+      </p>
+    </div>
+    <div class="analysis-card">
+      <div class="analysis-card-title">🎯 Top 4 Race</div>
+      <p class="analysis-text">
+        With <strong>${gamesLeft} games remaining</strong>, United ${s.position <= 4 ? 'are inside the top 4 and must hold on' : `need to close the gap to the top 4`}.
+        A strong run of wins from remaining fixtures is ${s.position <= 4 ? 'needed to secure Champions League football' : 'essential to break into Champions League contention'}.
+      </p>
+    </div>
+    <div class="analysis-card">
+      <div class="analysis-card-title">🏆 Title Picture</div>
+      <p class="analysis-text">
+        ${leader.team.name} lead the table on <strong>${leader.points} pts</strong> — a gap of <strong>${gap} points</strong>.
+        ${gap > 10 ? 'The title race is effectively over for United this season. Focus turns entirely to Champions League qualification.' : gap > 5 ? 'The title is a long shot but mathematically alive. United need to keep winning.' : 'United are very much in the title conversation — an exciting run-in ahead.'}
+      </p>
+    </div>`;
+}
+
+// ── HELPERS ────────────────────────────────────────────────────────────────
+function ordinal(n) {
+  const s = ['th','st','nd','rd'], v = n % 100;
+  return n + (s[(v-20)%10]||s[v]||s[0]);
+}
+
+function initReveal() {
+  const els = document.querySelectorAll('.reveal');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target)} });
+  },{threshold:0.08});
+  els.forEach(el => obs.observe(el));
+}
+</script>
+</body>
+</html>
